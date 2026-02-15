@@ -1,13 +1,12 @@
-name: Python CI Pipeline
+name: CI Deploy Rollback Pipeline
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    branches:
+      - main
 
 jobs:
-  build-and-test:
+  build-test-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -19,6 +18,31 @@ jobs:
       with:
         python-version: '3.10'
 
+    - name: Install dependencies
+      run: |
+        pip install pytest flask
+
     - name: Run tests
       run: |
-        python -m unittest
+        pytest test_app.py
+
+    - name: Save previous version (backup)
+      run: |
+        if [ -f app_backup.py ]; then rm app_backup.py; fi
+        cp app.py app_backup.py
+
+    - name: Deploy application
+      run: |
+        echo "Deploying application..."
+        python app.py &
+        sleep 5
+
+    - name: Health check
+      run: |
+        curl -f http://127.0.0.1:5000 || exit 1
+
+    - name: Rollback if deployment fails
+      if: failure()
+      run: |
+        echo "Deployment failed. Rolling back..."
+        cp app_backup.py app.py
